@@ -1,111 +1,74 @@
 <!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ProCamera 设备管理后台</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProCamera 管理后台</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0a0a0a; color:#eee; font-family:-apple-system,sans-serif; padding:20px; }
-h1 { font-size:22px; margin-bottom:16px; color:#ffd60a; }
-.stats { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
-.stat { background:#1a1a1a; padding:12px 20px; border-radius:10px; min-width:120px; }
-.stat b { font-size:24px; color:#ffd60a; display:block; }
-.device { background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:12px; }
-.device-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
-.device-id { font-family:monospace; color:#888; font-size:12px; }
-.badge { padding:3px 10px; border-radius:20px; font-size:12px; }
-.on { background:#1a5c2a; color:#4ade80; }
-.off { background:#5c1a1a; color:#f87171; }
-.features { margin-top:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:6px; }
-.feat { display:flex; align-items:center; gap:6px; font-size:13px; }
-button { background:#2a2a2a; color:#eee; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
-button:hover { background:#3a3a3a; }
-.btn-danger { background:#5c1a1a; }
-.btn-yellow { background:#ffd60a; color:#000; }
-label { cursor:pointer; }
-.label-input { background:#2a2a2a; border:none; color:#eee; padding:4px 8px; border-radius:4px; width:120px; }
-.muted { color:#666; font-size:12px; }
-</style>
-</head>
-<body>
-<h1>ProCamera 设备管理后台</h1>
-<div class="stats">
-  <div class="stat"><b id="total">0</b>总设备</div>
-  <div class="stat"><b id="online">0</b>启用中</div>
-  <div class="stat"><b id="blocked">0</b>已禁用</div>
-</div>
-<button class="btn-yellow" onclick="load()">刷新</button>
-<button onclick="toggleAll(true)">全部启用</button>
-<button class="btn-danger" onclick="toggleAll(false)">全部禁用</button>
-<div id="list" style="margin-top:16px"></div>
-
+*{box-sizing:border-box}
+body{background:#0d0d0d;color:#eee;font-family:-apple-system,system-ui;margin:0;padding:16px;padding-bottom:80px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{font-size:12px;color:#888;margin-bottom:16px}
+.card{background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:12px}
+h3{margin:0 0 12px;font-size:15px}
+.dev{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #2a2a2a}
+.dev:last-child{border:0}
+.devinfo{flex:1}
+.model{font-size:14px;font-weight:600}
+.meta{font-size:11px;color:#888;margin-top:2px}
+.toggle{width:46px;height:26px;background:#333;border-radius:13px;position:relative;cursor:pointer;flex-shrink:0}
+.toggle.on{background:#fdd835}
+.toggle::after{content:'';width:22px;height:22px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:0.2s}
+.toggle.on::after{left:22px}
+.feat{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #222}
+.feat:last-child{border:0}
+.feat span{font-size:14px}
+#status{font-size:12px;color:#888;margin:12px 0}
+#savebtn{position:fixed;bottom:20px;left:16px;right:16px;background:#fdd835;color:#000;border:none;padding:14px;border-radius:12px;font-size:16px;font-weight:bold}
+.empty{color:#555;text-align:center;padding:20px;font-size:13px}
+</style></head><body>
+<h1>ProCamera 设备管理</h1>
+<div class="sub">chenping316/procamera-admin</div>
+<div id="status">加载中...</div>
+<div class="card"><h3>在线设备 (<span id="dn">0</span>)</h3><div id="devs"></div></div>
+<div class="card"><h3>功能开关</h3><div id="feats"></div></div>
+<button id="savebtn" onclick="save()">保存更改</button>
 <script>
-const FEATURES = {
-  pro_mode:'专业模式', raw:'RAW格式', long_exposure:'长曝光', zoom_100x:'100倍变焦',
-  filters_28:'28种滤镜', ai_edit:'AI修图', beauty_retouch:'美颜精修', external_lens:'外接镜头校正',
-  super_res:'AI超分辨率', hdr:'HDR增强', night_mode:'夜景模式', silent_shutter:'静音快门',
-  voice_shutter:'声控拍照', burst:'连拍', timer:'定时拍照', watermark:'水印', film_sim:'胶片模拟'
-};
-
-async function load() {
-  const r = await fetch('/api/devices');
-  const devs = await r.json();
-  document.getElementById('total').textContent = devs.length;
-  document.getElementById('online').textContent = devs.filter(d=>d.enabled).length;
-  document.getElementById('blocked').textContent = devs.filter(d=>!d.enabled).length;
-  const list = document.getElementById('list');
-  list.innerHTML = devs.map(d => {
-    const last = new Date(d.last_seen).toLocaleString();
-    return `<div class="device">
-      <div class="device-head">
-        <div>
-          <b>${d.label||'未命名设备'}</b>
-          <span class="device-id">${d.device_id}</span><br>
-          <span class="muted">${d.model||'未知型号'} · Android ${d.android_version||'?'} · 最后在线: ${last}</span>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span class="badge ${d.enabled?'on':'off'}">${d.enabled?'已启用':'已禁用'}</span>
-          <input class="label-input" value="${d.label||''}" placeholder="设备名" onchange="setLabel('${d.device_id}',this.value)">
-          <button onclick="toggle('${d.device_id}',${!d.enabled})">${d.enabled?'禁用':'启用'}</button>
-          <button class="btn-danger" onclick="del('${d.device_id}')">删除</button>
-        </div>
-      </div>
-      <div class="features" id="feat-${d.device_id}">加载中...</div>
-    </div>`;
-  }).join('');
-  devs.forEach(d => loadFeatures(d.device_id));
+let TOKEN=localStorage.getItem("gh_token")||"";
+const REPO="chenping316/procamera-admin";
+if(!TOKEN){TOKEN=prompt("输入GitHub令牌:");localStorage.setItem("gh_token",TOKEN);}
+let sha="", data={devices:{},features:{}};
+const FEATURES=[["pro_mode","专业模式"],["raw","RAW格式"],["long_exposure","长曝光"],["zoom_100x","100倍变焦"],["filters_28","28种滤镜"],["ai_edit","AI修图"],["beauty_retouch","美颜精修"],["external_lens","外接镜头"],["super_res","AI超分"],["hdr","HDR"],["night_mode","夜景模式"],["silent_shutter","静音快门"],["voice_shutter","声控快门"],["burst","连拍"],["timer","倒计时"],["watermark","水印"],["film_sim","胶片模拟"]];
+async function load(){
+  try{
+    const r=await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`,{headers:{"Authorization":`token ${TOKEN}`,"User-Agent":"procamera"}});
+    const j=await r.json();
+    sha=j.sha;
+    data=JSON.parse(atob(j.content));
+    render();
+    document.getElementById("status").textContent="已加载 · "+Object.keys(data.devices).length+" 台设备在线";
+  }catch(e){document.getElementById("status").textContent="加载失败: "+e}
 }
-
-async function loadFeatures(id) {
-  const r = await fetch(`/api/device/${id}/features`);
-  const f = await r.json();
-  document.getElementById('feat-'+id).innerHTML = Object.keys(FEATURES).map(k =>
-    `<label class="feat"><input type="checkbox" ${f[k]?'checked':''} onchange="setFeat('${id}','${k}',this.checked)"> ${FEATURES[k]}</label>`
-  ).join('');
+function render(){
+  const d=document.getElementById("devs");
+  const ids=Object.keys(data.devices);
+  document.getElementById("dn").textContent=ids.length;
+  if(ids.length===0){d.innerHTML='<div class="empty">暂无设备上报</div>'}
+  else d.innerHTML=ids.map(id=>{
+    const info=data.devices[id];
+    return `<div class="dev"><div class="devinfo"><div class="model">${info.model||"未知设备"}</div><div class="meta">${id.slice(0,16)} · ${info.lastSeen||""}</div></div><div class="toggle ${info.enabled!==false?'on':''}" onclick="toggleDev('${id}')"></div></div>`;
+  }).join("");
+  const f=document.getElementById("feats");
+  f.innerHTML=FEATURES.map(([k,label])=>{
+    const on=data.features[k]!==false;
+    return `<div class="feat"><span>${label}</span><div class="toggle ${on?'on':''}" onclick="toggleFeat('${k}')"></div></div>`;
+  }).join("");
 }
-
-async function toggle(id, en) {
-  await fetch(`/api/device/${id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})});
-  load();
-}
-async function del(id) {
-  if(!confirm('确定删除此设备？')) return;
-  await fetch(`/api/device/${id}/delete`,{method:'POST'});
-  load();
-}
-async function setLabel(id, v) {
-  await fetch(`/api/device/${id}/label`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:v})});
-}
-async function setFeat(id, feat, allow) {
-  await fetch(`/api/device/${id}/feature`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:feat,allowed:allow})});
-}
-async function toggleAll(en) {
-  await fetch('/api/all/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})});
-  load();
+function toggleDev(id){data.devices[id].enabled=data.devices[id].enabled===false;render();}
+function toggleFeat(k){data.features[k]=data.features[k]===false;render();}
+async function save(){
+  document.getElementById("savebtn").textContent="保存中...";
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`,{method:"PUT",headers:{"Authorization":`token ${TOKEN}`,"Content-Type":"application/json","User-Agent":"procamera"},body:JSON.stringify({message:"update",content:b64,sha:sha})});
+  document.getElementById("savebtn").textContent="已保存 ✓";
+  setTimeout(()=>document.getElementById("savebtn").textContent="保存更改",1500);
 }
 load();
-setInterval(load, 5000);
-</script>
-</body>
-</html>
+</script></body></html>
