@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProCamera 设备管理后台</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0a0a; color:#eee; font-family:-apple-system,sans-serif; padding:20px; }
+h1 { font-size:22px; margin-bottom:16px; color:#ffd60a; }
+.stats { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+.stat { background:#1a1a1a; padding:12px 20px; border-radius:10px; min-width:120px; }
+.stat b { font-size:24px; color:#ffd60a; display:block; }
+.device { background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:12px; }
+.device-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+.device-id { font-family:monospace; color:#888; font-size:12px; }
+.badge { padding:3px 10px; border-radius:20px; font-size:12px; }
+.on { background:#1a5c2a; color:#4ade80; }
+.off { background:#5c1a1a; color:#f87171; }
+.features { margin-top:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:6px; }
+.feat { display:flex; align-items:center; gap:6px; font-size:13px; }
+button { background:#2a2a2a; color:#eee; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+button:hover { background:#3a3a3a; }
+.btn-danger { background:#5c1a1a; }
+.btn-yellow { background:#ffd60a; color:#000; }
+label { cursor:pointer; }
+.label-input { background:#2a2a2a; border:none; color:#eee; padding:4px 8px; border-radius:4px; width:120px; }
+.muted { color:#666; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>ProCamera 设备管理后台</h1>
+<div class="stats">
+  <div class="stat"><b id="total">0</b>总设备</div>
+  <div class="stat"><b id="online">0</b>启用中</div>
+  <div class="stat"><b id="blocked">0</b>已禁用</div>
+</div>
+<button class="btn-yellow" onclick="load()">刷新</button>
+<button onclick="toggleAll(true)">全部启用</button>
+<button class="btn-danger" onclick="toggleAll(false)">全部禁用</button>
+<div id="list" style="margin-top:16px"></div>
+
+<script>
+const FEATURES = {
+  pro_mode:'专业模式', raw:'RAW格式', long_exposure:'长曝光', zoom_100x:'100倍变焦',
+  filters_28:'28种滤镜', ai_edit:'AI修图', beauty_retouch:'美颜精修', external_lens:'外接镜头校正',
+  super_res:'AI超分辨率', hdr:'HDR增强', night_mode:'夜景模式', silent_shutter:'静音快门',
+  voice_shutter:'声控拍照', burst:'连拍', timer:'定时拍照', watermark:'水印', film_sim:'胶片模拟'
+};
+
+async function load() {
+  const r = await fetch('/api/devices');
+  const devs = await r.json();
+  document.getElementById('total').textContent = devs.length;
+  document.getElementById('online').textContent = devs.filter(d=>d.enabled).length;
+  document.getElementById('blocked').textContent = devs.filter(d=>!d.enabled).length;
+  const list = document.getElementById('list');
+  list.innerHTML = devs.map(d => {
+    const last = new Date(d.last_seen).toLocaleString();
+    return `<div class="device">
+      <div class="device-head">
+        <div>
+          <b>${d.label||'未命名设备'}</b>
+          <span class="device-id">${d.device_id}</span><br>
+          <span class="muted">${d.model||'未知型号'} · Android ${d.android_version||'?'} · 最后在线: ${last}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="badge ${d.enabled?'on':'off'}">${d.enabled?'已启用':'已禁用'}</span>
+          <input class="label-input" value="${d.label||''}" placeholder="设备名" onchange="setLabel('${d.device_id}',this.value)">
+          <button onclick="toggle('${d.device_id}',${!d.enabled})">${d.enabled?'禁用':'启用'}</button>
+          <button class="btn-danger" onclick="del('${d.device_id}')">删除</button>
+        </div>
+      </div>
+      <div class="features" id="feat-${d.device_id}">加载中...</div>
+    </div>`;
+  }).join('');
+  devs.forEach(d => loadFeatures(d.device_id));
+}
+
+async function loadFeatures(id) {
+  const r = await fetch(`/api/device/${id}/features`);
+  const f = await r.json();
+  document.getElementById('feat-'+id).innerHTML = Object.keys(FEATURES).map(k =>
+    `<label class="feat"><input type="checkbox" ${f[k]?'checked':''} onchange="setFeat('${id}','${k}',this.checked)"> ${FEATURES[k]}</label>`
+  ).join('');
+}
+
+async function toggle(id, en) {
+  await fetch(`/api/device/${id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})});
+  load();
+}
+async function del(id) {
+  if(!confirm('确定删除此设备？')) return;
+  await fetch(`/api/device/${id}/delete`,{method:'POST'});
+  load();
+}
+async function setLabel(id, v) {
+  await fetch(`/api/device/${id}/label`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:v})});
+}
+async function setFeat(id, feat, allow) {
+  await fetch(`/api/device/${id}/feature`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:feat,allowed:allow})});
+}
+async function toggleAll(en) {
+  await fetch('/api/all/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})});
+  load();
+}
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>
