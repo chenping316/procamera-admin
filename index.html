@@ -53,7 +53,7 @@ function render(){
   if(ids.length===0){d.innerHTML='<div class="empty">暂无设备上报</div>'}
   else d.innerHTML=ids.map(id=>{
     const info=data.devices[id];
-    return `<div class="dev"><div class="devinfo"><div class="model">${info.model||"未知设备"}</div><div class="meta">${id.slice(0,16)} · ${info.lastSeen||""}</div></div><div class="toggle ${info.enabled!==false?'on':''}" onclick="toggleDev('${id}')"></div></div>`;
+    return `<div class="dev"><div class="devinfo"><div class="model">${info.model||"未知设备"}</div><div class="meta">设备码: ${id}</div><div class="meta">${new Date(info.lastSeen||0).toLocaleString()}</div></div><div class="toggle ${info.enabled!==false?'on':''}" onclick="toggleDev('${id}')"></div></div>`;
   }).join("");
   const f=document.getElementById("feats");
   f.innerHTML=FEATURES.map(([k,label])=>{
